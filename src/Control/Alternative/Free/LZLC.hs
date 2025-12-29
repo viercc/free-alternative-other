@@ -2,6 +2,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTSyntax #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Free alternative (with /left zero/ + /left catch/).
 --
@@ -11,7 +12,7 @@
 -- For an instance of @(Alternative f)@, both laws have these in common.
 --
 -- - Inherited laws from 'Applicative'
--- - @('empty', '<|>')@ forms monoid on @f a@ for any type @a@.
+-- - @(f a, 'empty', '<|>')@ forms monoid for any type @a@.
 -- - /Left zero/ law: @'empty' '<*>' x === 'empty'@.
 --
 -- Candidate #1 of the Alternative law have /Left distribution/ law.
@@ -38,85 +39,145 @@
 -- - <https://hackage.haskell.org/package/free-5.2/docs/Control-Alternative-Free.html>
 --
 -- This module provides the free alternative #2.
-module Control.Alternative.Free.LZLC where
+module Control.Alternative.Free.LZLC(
+  Free(..),
+  Summand(..),
+  Factor(..),
+
+  viewSum, reviewSum, injectSummand,
+  viewAp, reviewAp, injectFactor,
+
+  hoistFree, liftFree, foldFree,
+
+  -- * Auxiliary types
+  Az, Az'(..), Sz(..), Sz'(..),
+) where
 
 import Control.Applicative (Alternative (..))
-import qualified Control.Applicative.Free.Zero as AZ
+import Control.Applicative.Free.Zero (Az)
+import qualified Control.Applicative.Free.Zero as Az
 
 -- * Type definitions
 
 -- | The Free (left zero + left catch) 'Alternative'.
-data Free f a where
-  Pure :: a -> Free f a
-  Zero :: Free f a
-  Lift :: f a -> Free f a
-  SumOf :: Sz' (SummandF f) a -> Free f a
-  ApOf :: Az' (FactorF f) a -> Free f a
+data Free f a =
+    Pure a
+  | Zero
+  | Lift (f a)
+  | SumOf (Sz' (Summand f) a)
+  | ApOf (Az' (Factor f) a)
   deriving (Functor)
 
-data SummandF f a where
-  SummandLift :: f a -> SummandF f a
-  SummandAp :: Az' (FactorF f) a -> SummandF f a
+-- | Subexpressions of @'Free' f a@ which can't be written as any one of
+--
+-- * @empty@
+-- * @pure a@
+-- * Nontrivial sum @x <|> y@
+data Summand f a =
+    SummandLift (f a)
+  | SummandAp (Az' (Factor f) a)
   deriving (Functor)
 
-data FactorF f a where
-  FactorLift :: f a -> FactorF f a
-  FactorSum :: Sz' (SummandF f) a -> FactorF f a
+-- | Subexpressions of @'Free' f a@ which can't be written as any one of
+--
+-- * @empty@
+-- * @pure a@
+-- * Nontrivial product @x <*> y@
+data Factor f a =
+    FactorLift (f a)
+  | FactorSum (Sz' (Summand f) a)
   deriving (Functor)
 
-injectSummand :: SummandF f a -> Free f a
+injectSummand :: Summand f a -> Free f a
 injectSummand (SummandLift fa) = Lift fa
 injectSummand (SummandAp fas) = ApOf fas
 
-injectFactor :: FactorF f a -> Free f a
+viewSum :: Free f a -> Sz (Summand f) a
+viewSum e = case e of
+ (Pure a) -> Zee a
+ Zero -> Nil
+ (Lift fa) -> singletonSz (SummandLift fa)
+ (SumOf fas) -> includeSz' fas
+ (ApOf fas) -> singletonSz (SummandAp fas)
+
+reviewSum :: Sz (Summand f) a -> Free f a
+reviewSum e = case e of
+  Nil -> Zero
+  Zee a -> Pure a
+  Cons z Nil -> injectSummand z
+  Cons z (Zee a) -> SumOf $ SzFz z a
+  Cons z1 (Cons z2 r) -> SumOf $ SzLong z1 z2 r
+
+injectFactor :: Factor f a -> Free f a
 injectFactor (FactorLift fa) = Lift fa
 injectFactor (FactorSum fas) = SumOf fas
 
-viewSum :: Free f a -> Sz (SummandF f) a
-viewSum (Pure a) = Zee a
-viewSum Zero = Nil
-viewSum (Lift fa) = singletonSz (SummandLift fa)
-viewSum (SumOf fas) = case fas of
-  SzFz fa a -> Cons fa (Zee a)
-  SzLong f1 f2 rest -> Cons f1 (Cons f2 rest)
-viewSum (ApOf fas) = singletonSz (SummandAp fas)
+viewAp :: Free f a -> Az (Factor f) a
+viewAp e = case e of
+ (Pure a) -> Az.Pure a
+ Zero -> Az.Zero
+ (Lift fa) -> singletonAz (FactorLift fa)
+ (SumOf fas) -> singletonAz (FactorSum fas)
+ (ApOf fas) -> includeAz' fas
 
-viewAp :: Free f a -> Az (FactorF f) a
-viewAp (Pure a) = AZ.Pure a
-viewAp Zero = AZ.Zero
-viewAp (Lift fa) = singletonAz (FactorLift fa)
-viewAp (SumOf fas) = singletonAz (FactorSum fas)
-viewAp (ApOf fas) = case fas of
-  AzFz fa -> AZ.Ap fa AZ.Zero
-  AzLong fa fb mk -> AZ.Ap fa (AZ.Ap fb mk)
+reviewAp :: Functor f => Az (Factor f) a -> Free f a
+reviewAp e = case e of
+  Az.Pure a -> Pure a
+  Az.Zero -> Zero
+  Az.Ap z (Az.Pure k) -> injectFactor (k <$> z)
+  Az.Ap z Az.Zero -> ApOf $ AzFz z
+  Az.Ap z1 (Az.Ap z2 r) -> ApOf $ AzLong z1 z2 r
 
 instance (Functor f) => Applicative (Free f) where
   pure = Pure
-  x <*> y = case viewAp x <*> viewAp y of
-    AZ.Pure b -> Pure b
-    AZ.Zero -> Zero
-    AZ.Ap z (AZ.Pure k) -> injectFactor (k <$> z)
-    AZ.Ap z AZ.Zero -> ApOf $ AzFz z
-    AZ.Ap z1 (AZ.Ap z2 r) -> ApOf $ AzLong z1 z2 r
+  x <*> y = reviewAp (viewAp x <*> viewAp y)
 
 instance (Functor f) => Alternative (Free f) where
   empty = Zero
-  x <|> y = case viewSum x <> viewSum y of
-    Nil -> Zero
-    Zee b -> Pure b
-    Cons z Nil -> injectSummand z
-    Cons z (Zee b) -> SumOf $ SzFz z b
-    Cons z1 (Cons z2 r) -> SumOf $ SzLong z1 z2 r
+  x <|> y = reviewSum (viewSum x <> viewSum y)
+
+hoistFree :: forall f g a. (forall x. f x -> g x) -> Free f a -> Free g a
+hoistFree fg e = case e of
+  Pure a -> Pure a
+  Zero -> Zero
+  Lift fa -> Lift (fg fa)
+  SumOf fas -> SumOf (mapSz' goSummand fas)
+  ApOf fas -> ApOf (hoistAz' goFactor fas)
+  where 
+    goFactor :: forall b. Factor f b -> Factor g b
+    goFactor (FactorLift fb) = FactorLift $ fg fb
+    goFactor (FactorSum fbs) = FactorSum $ mapSz' goSummand fbs
+
+    goSummand :: forall b. Summand f b -> Summand g b
+    goSummand (SummandLift fb) = SummandLift $ fg fb
+    goSummand (SummandAp fbs)  = SummandAp $ hoistAz' goFactor fbs
+
+liftFree :: f a -> Free f a
+liftFree = Lift
+
+foldFree :: forall f g a. (Alternative g) => (forall x. f x -> g x) -> Free f a -> g a
+foldFree handle = goSum . viewSum
+  where
+    goSum :: forall b. Sz (Summand f) b -> g b
+    goSum = foldSz empty pure (\fa r -> goSummand fa <|> r)
+
+    goAp :: forall b. Az (Factor f) b -> g b
+    goAp = Az.foldAz goFactor empty
+
+    goFactor :: forall b. Factor f b -> g b
+    goFactor (FactorLift fb) = handle fb
+    goFactor (FactorSum fbs) = goSum (includeSz' fbs)
+
+    goSummand :: forall b. Summand f b -> g b
+    goSummand (SummandLift fb) = handle fb
+    goSummand (SummandAp fbs)  = goAp (includeAz' fbs)
 
 -- * Auxiliary types
 
--- | Formal products of @f@ with zero.
-type Az = AZ.Free
-
 singletonAz :: f a -> Az f a
-singletonAz fa = AZ.Ap fa (AZ.Pure id)
+singletonAz fa = Az.Ap fa (Az.Pure id)
 
--- | Nontrivial products. Az but not @pure a@, @Zero@, nor @singletonAz fa@.
+-- | Nontrivial products.
 data Az' f a where
   AzFz :: f a -> Az' f b
   AzLong :: f a -> f b -> Az f (b -> a -> c) -> Az' f c
@@ -125,16 +186,33 @@ instance Functor (Az' f) where
   fmap _ (AzFz fa) = AzFz fa
   fmap f (AzLong fa fb rest) = AzLong fa fb (fmap (\k b a -> f (k b a)) rest)
 
--- | Formal sums of @f@ with absorbing elements.
---
--- > Nil  : Empty sum
--- > Cons : Append one summand (f a) to a sum
--- > Zee  : @pure@ which absorbs any summand right to it
-data Sz f a = Nil | Zee a | Cons (f a) (Sz f a)
+hoistAz' :: (forall x. f x -> g x) -> Az' f a -> Az' g a
+hoistAz' fg (AzFz fa) = AzFz (fg fa)
+hoistAz' fg (AzLong fa fb rest) = AzLong (fg fa) (fg fb) (Az.hoistAz fg rest)
+
+includeAz' :: Az' f a -> Az f a
+includeAz' (AzFz fa) = Az.Ap fa Az.Zero
+includeAz' (AzLong fa fb rest) = Az.Ap fa (Az.Ap fb rest)
+
+-- | Formal sums of @f a@ with absorbing elements @a@.
+data Sz f a =
+    Nil    -- ^ Empty sum
+  | Zee a  -- ^ Right absorbing elemnet
+  | Cons (f a) (Sz f a) -- Append one summand @(f a)@ to the rest 
   deriving (Functor)
 
 singletonSz :: f a -> Sz f a
 singletonSz fa = Cons fa Nil
+
+foldSz :: r -> (a -> r) -> (f a -> r -> r) -> Sz f a -> r
+foldSz r0 z f =
+  let go Nil = r0
+      go (Zee a) = z a
+      go (Cons fa rest) = f fa (go rest)
+  in go
+
+mapSz :: (f a -> g a) -> Sz f a -> Sz g a
+mapSz fg = foldSz Nil Zee (Cons . fg)
 
 instance Semigroup (Sz f a) where
   Nil <> y = y
@@ -144,6 +222,14 @@ instance Semigroup (Sz f a) where
 instance Monoid (Sz f a) where
   mempty = Nil
 
--- | Nontrivial sums. Sz but not @Nil@, @Zee a@, nor @singletonSz fa@.
+-- | Nontrivial sums.
 data Sz' f a = SzFz (f a) a | SzLong (f a) (f a) (Sz f a)
   deriving (Functor)
+
+mapSz' :: (f a -> g a) -> Sz' f a -> Sz' g a
+mapSz' fg (SzFz fa a) = SzFz (fg fa) a
+mapSz' fg (SzLong fa1 fa2 rest) = SzLong (fg fa1) (fg fa2) (mapSz fg rest) 
+
+includeSz' :: Sz' f a -> Sz f a
+includeSz' (SzFz fa a) = Cons fa (Zee a)
+includeSz' (SzLong fa1 fa2 rest) = Cons fa1 (Cons fa2 rest)

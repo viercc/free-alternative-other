@@ -2,12 +2,12 @@
 
 The other free `Alternative`.
 
-There is the implementation of the free `Alternative` in "free" package.
+There is the implementation of the free `Alternative` in `free`.
 
-- [Control.Alternative.Free](https://hackage.haskell.org/package/free-5.2/docs/Control-Alternative-Free.html)
+- free --- [Control.Alternative.Free](https://hackage.haskell.org/package/free-5.2/docs/Control-Alternative-Free.html)
 
 But, strictly speaking, what we call `Alternative` is not one type class,
-but multiple "virtual" type classes sharing the same method names `empty, (<|>)` in a trenchcoat.
+but multiple "virtual" type classes sharing the same methods `empty, (<|>)`.
 
 The above package provides the free `Alternative` for *one* such "virtual" type class.
 This package provides for another.
@@ -54,11 +54,11 @@ existing instances often satisfy *only one of them* (and none of them sometimes.
    ```
 
    For instances satisfying _left catch_ law, the `(<|>)` operator
-   means *recovery from failures of the left*. For them, _left catch_ law
-   states that `pure x` is always considered complete success and nothing change
-   by adding "recovery plan" to it.
+   means *recovery from failures of the left operand*. For them, _left catch_ law
+   states that `pure x` must be a complete success and nothing changes
+   by adding recovery plan `z` to it.
 
    **Notable instances:** `Maybe`, `Either`, `IO`
 
-The existing implementation is the former: free `Alternative` with _left distribution_,
-and what this package provides is the latter: free `Alternative` with _left catch_.
+The existing implementation from `free` is the former: the free `Alternative` with _left distribution_,
+and this package provides the latter: the free `Alternative` with _left catch_.

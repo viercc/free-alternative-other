@@ -14,24 +14,29 @@
 -- zero \<*\> x === zero
 -- @
 -- 
--- This module provides the free construction of them
--- in a way similar to the free monad or the free applicative.
-module Control.Applicative.Free.Zero where
+-- This module provides the free @Applicative@ with zero, 'Az',
+-- like the free applicative 'Control.Applicative.Az.Ap'.
+module Control.Applicative.Free.Zero(
+  Az(..),
+  liftAz, hoistAz, trap,
+  
+  foldAz, foldMaybeT, retract
+) where
 
 import Control.Applicative (Alternative(..), (<**>))
 
 -- | Free (applicative with left zero).
-data Free f a where
-  Pure :: a -> Free f a
-  Zero :: Free f a
-  Ap :: f a -> Free f (a -> b) -> Free f b
+data Az f a where
+  Pure :: a -> Az f a
+  Zero :: Az f a
+  Ap :: f a -> Az f (a -> b) -> Az f b
 
-instance Functor (Free f) where
+instance Functor (Az f) where
   fmap f (Pure r) = Pure (f r)
   fmap _ Zero = Zero
   fmap f (Ap fa mk) = Ap fa ((f .) <$> mk)
 
-instance Applicative (Free f) where
+instance Applicative (Az f) where
   pure = Pure
 
   liftA2 op (Pure x) y = op x <$> y
@@ -39,15 +44,17 @@ instance Applicative (Free f) where
   liftA2 op (Ap fa mk) y = Ap fa (liftA2 (\g b a -> op (g a) b) mk y)
 
 -- | /Left zero/ + /Left catch/
-instance Alternative (Free f) where
+instance Alternative (Az f) where
   empty = Zero
   (<|>) = trap
 
-hoistFree :: (forall x. f x -> g x) -> Free f a -> Free g a
-hoistFree _ (Pure a) = Pure a
-hoistFree _ Zero = Zero
-hoistFree fg (Ap fa mk) = Ap (fg fa) (hoistFree fg mk)
+liftAz :: f a -> Az f a
+liftAz fa = Ap fa (Pure id)
 
+hoistAz :: (forall x. f x -> g x) -> Az f a -> Az g a
+hoistAz _ (Pure a) = Pure a
+hoistAz _ Zero = Zero
+hoistAz fg (Ap fa mk) = Ap (fg fa) (hoistAz fg mk)
 
 -- | Recovery from 'Zero'.
 --
@@ -58,25 +65,26 @@ hoistFree fg (Ap fa mk) = Ap (fg fa) (hoistFree fg mk)
 -- @
 -- 'trap' (Ap f1 (Ap f2 ... Zero)) y === Ap f1 (Ap f2 ... y)
 -- @
-trap :: Free f a -> Free f a -> Free f a
+trap :: Az f a -> Az f a -> Az f a
 trap = go id
   where
-    go :: (b -> a) -> Free f a -> Free f b -> Free f a
+    go :: (b -> a) -> Az f a -> Az f b -> Az f a
     go _ (Pure a) _ = Pure a
     go p Zero y = p <$> y
     go p (Ap fa mk) y = Ap fa (go (const . p) mk y)
 
 -- * Interpreting
 
-interpret :: Applicative f => (forall r. f r) -> Free f a -> f a
-interpret _ (Pure a) = pure a
-interpret z Zero = z
-interpret z (Ap fa mk) = fa <**> interpret z mk
+foldAz :: Applicative g => (forall r. f r -> g r) -> (forall r. g r) -> Az f a -> g a
+foldAz handle z e = case e of
+  Pure a -> pure a
+  Zero -> z
+  Ap fa mk -> handle fa <**> foldAz handle z mk
 
-interpretAlternative :: Alternative f => Free f a -> f a
-interpretAlternative = interpret empty
+foldMaybeT :: Monad g => (forall r. f r -> g r) -> Az f a -> g (Maybe a)
+foldMaybeT _ (Pure a) = pure (Just a)
+foldMaybeT _ Zero = pure Nothing
+foldMaybeT h (Ap fa mk) = h fa >>= \a -> fmap ($ a) <$> foldMaybeT h mk 
 
-interpretMaybeT :: Monad f => Free f a -> f (Maybe a)
-interpretMaybeT (Pure a) = pure (Just a)
-interpretMaybeT Zero = pure Nothing
-interpretMaybeT (Ap fa mk) = fa >>= \a -> fmap ($ a) <$> interpretMaybeT mk 
+retract :: Alternative f => Az f a -> f a
+retract = foldAz id empty
