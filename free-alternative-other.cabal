@@ -20,13 +20,13 @@ library
     import:           warnings
     exposed-modules:
       Control.Applicative.Free.Zero,
-      Control.Applicative.Free.Zero.Impure,
       Control.Alternative.Free.LZLC,
+      Control.Alternative.Free.Lawless,
       Data.List.Zero,
-      Data.List.Zero.NonEmpty,
       Data.List.NotOne
     build-depends:
       base >=4.18,
+      free,
       auto-lift-classes
     hs-source-dirs:   src
     default-language: Haskell2010
