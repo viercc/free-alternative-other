@@ -3,8 +3,8 @@ packages: ./free-alternative-other.cabal
 source-repository-package
     type: git
     location: https://github.com/viercc/two-monoids-in-one.git
-    -- v0
-    tag: 87ca0674574bdc9995fbe926bb030fc52d004842
+    -- v0.1
+    tag: 2349b36b389d117cc21365a2bebda0c73ca5a8cd
 
 program-options
     haddock-options: --no-print-missing-docs
