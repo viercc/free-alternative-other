@@ -24,6 +24,8 @@ module Control.Applicative.Free.Zero(
 ) where
 
 import Control.Applicative (Alternative(..), (<**>))
+import FFunctor
+import FMonad
 
 -- | Free (applicative with left zero).
 data Az f a where
@@ -55,6 +57,13 @@ hoistAz :: (forall x. f x -> g x) -> Az f a -> Az g a
 hoistAz _ (Pure a) = Pure a
 hoistAz _ Zero = Zero
 hoistAz fg (Ap fa mk) = Ap (fg fa) (hoistAz fg mk)
+
+instance FFunctor Az where
+  ffmap = hoistAz
+
+instance FMonad Az where
+  fpure = liftAz
+  fbind k = foldAz k Zero
 
 -- | Recovery from 'Zero'.
 --

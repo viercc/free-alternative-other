@@ -23,9 +23,12 @@ library
       Control.Alternative.Free.LZLC,
       Control.Alternative.Free.Lawless,
       Data.List.Zero,
-      Data.List.NotOne
+      FFunctor.Lift1,
+      FFunctor.Tannen
     build-depends:
       base >=4.18,
+      functor-monad,
+      monad-ideals,
       free,
       auto-lift-classes
     hs-source-dirs:   src
