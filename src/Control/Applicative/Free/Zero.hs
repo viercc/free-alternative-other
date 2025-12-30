@@ -14,13 +14,13 @@
 -- zero \<*\> x === zero
 -- @
 -- 
--- This module provides the free @Applicative@ with zero, 'Az',
--- like the free applicative 'Control.Applicative.Az.Ap'.
+-- This module provides the free @Applicative@ with zero, 'ApZ',
+-- like the free applicative 'Control.Applicative.ApZ.Ap'.
 module Control.Applicative.Free.Zero(
-  Az(..),
-  liftAz, hoistAz, trap,
+  ApZ(..),
+  liftApZ, hoistApZ, trap,
   
-  foldAz, foldMaybeT, retract
+  foldApZ, foldMaybeT, retract
 ) where
 
 import Control.Applicative (Alternative(..), (<**>))
@@ -28,17 +28,17 @@ import FFunctor
 import FMonad
 
 -- | Free (applicative with left zero).
-data Az f a where
-  Pure :: a -> Az f a
-  Zero :: Az f a
-  Ap :: f a -> Az f (a -> b) -> Az f b
+data ApZ f a where
+  Pure :: a -> ApZ f a
+  Zero :: ApZ f a
+  Ap :: f a -> ApZ f (a -> b) -> ApZ f b
 
-instance Functor (Az f) where
+instance Functor (ApZ f) where
   fmap f (Pure r) = Pure (f r)
   fmap _ Zero = Zero
   fmap f (Ap fa mk) = Ap fa ((f .) <$> mk)
 
-instance Applicative (Az f) where
+instance Applicative (ApZ f) where
   pure = Pure
 
   liftA2 op (Pure x) y = op x <$> y
@@ -46,24 +46,24 @@ instance Applicative (Az f) where
   liftA2 op (Ap fa mk) y = Ap fa (liftA2 (\g b a -> op (g a) b) mk y)
 
 -- | /Left zero/ + /Left catch/
-instance Alternative (Az f) where
+instance Alternative (ApZ f) where
   empty = Zero
   (<|>) = trap
 
-liftAz :: f a -> Az f a
-liftAz fa = Ap fa (Pure id)
+liftApZ :: f a -> ApZ f a
+liftApZ fa = Ap fa (Pure id)
 
-hoistAz :: (forall x. f x -> g x) -> Az f a -> Az g a
-hoistAz _ (Pure a) = Pure a
-hoistAz _ Zero = Zero
-hoistAz fg (Ap fa mk) = Ap (fg fa) (hoistAz fg mk)
+hoistApZ :: (forall x. f x -> g x) -> ApZ f a -> ApZ g a
+hoistApZ _ (Pure a) = Pure a
+hoistApZ _ Zero = Zero
+hoistApZ fg (Ap fa mk) = Ap (fg fa) (hoistApZ fg mk)
 
-instance FFunctor Az where
-  ffmap = hoistAz
+instance FFunctor ApZ where
+  ffmap = hoistApZ
 
-instance FMonad Az where
-  fpure = liftAz
-  fbind k = foldAz k Zero
+instance FMonad ApZ where
+  fpure = liftApZ
+  fbind k = foldApZ k Zero
 
 -- | Recovery from 'Zero'.
 --
@@ -74,26 +74,26 @@ instance FMonad Az where
 -- @
 -- 'trap' (Ap f1 (Ap f2 ... Zero)) y === Ap f1 (Ap f2 ... y)
 -- @
-trap :: Az f a -> Az f a -> Az f a
+trap :: ApZ f a -> ApZ f a -> ApZ f a
 trap = go id
   where
-    go :: (b -> a) -> Az f a -> Az f b -> Az f a
+    go :: (b -> a) -> ApZ f a -> ApZ f b -> ApZ f a
     go _ (Pure a) _ = Pure a
     go p Zero y = p <$> y
     go p (Ap fa mk) y = Ap fa (go (const . p) mk y)
 
 -- * Interpreting
 
-foldAz :: Applicative g => (forall r. f r -> g r) -> (forall r. g r) -> Az f a -> g a
-foldAz handle z e = case e of
+foldApZ :: Applicative g => (forall r. f r -> g r) -> (forall r. g r) -> ApZ f a -> g a
+foldApZ handle z e = case e of
   Pure a -> pure a
   Zero -> z
-  Ap fa mk -> handle fa <**> foldAz handle z mk
+  Ap fa mk -> handle fa <**> foldApZ handle z mk
 
-foldMaybeT :: Monad g => (forall r. f r -> g r) -> Az f a -> g (Maybe a)
+foldMaybeT :: Monad g => (forall r. f r -> g r) -> ApZ f a -> g (Maybe a)
 foldMaybeT _ (Pure a) = pure (Just a)
 foldMaybeT _ Zero = pure Nothing
 foldMaybeT h (Ap fa mk) = h fa >>= \a -> fmap ($ a) <$> foldMaybeT h mk 
 
-retract :: Alternative f => Az f a -> f a
-retract = foldAz id empty
+retract :: Alternative f => ApZ f a -> f a
+retract = foldApZ id empty

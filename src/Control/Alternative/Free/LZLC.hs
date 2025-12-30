@@ -45,22 +45,22 @@
 -- This module provides the free alternative #2.
 module Control.Alternative.Free.LZLC(
   -- * Type definitions
-  Free(.., SumOf, AzOf),
+  Free(.., SumZOf, ApZOf),
 
   Summand(..), viewSummand,
   Factor(..), viewFactor,
 
-  viewSum, reviewSum,
-  viewAz, reviewAz,
+  viewSumZ, reviewSumZ,
+  viewApZ, reviewApZ,
 
   -- * Universal properties
   hoistFree, liftFree, foldFree,
 
   -- * Auxiliary definitions
   Trivial(..),
-  Sum,
-  NontrivialSum(..),
-  NontrivialAz(..)
+  SumZ,
+  NontrivialSumZ(..),
+  NontrivialApZ(..)
 ) where
 
 import Control.Applicative (Alternative (..))
@@ -83,22 +83,22 @@ import FMonad
 -- way is to use 'liftFree' and methods of @Alternative (Free f)@ instances.
 --
 -- To pattern match a value of @Free f a@, a convenient and recommended
--- way is to use 'AzOf' and 'SumOf' pattern synonyms, along with
+-- way is to use 'ApZOf' and 'SumZOf' pattern synonyms, along with
 -- 'viewFactor' and 'viewSummand' to pattern match on @Factor@ and @Summand@
 -- further.
 data Free f a where
   FreeTrivial :: Trivial f a -> Free f a
-  FreeSumOf' :: NontrivialSum (Summand f) a -> Free f a
-  FreeAzOf' :: NontrivialAz (Factor f) a -> Free f a
+  FreeSumZOf' :: NontrivialSumZ (Summand f) a -> Free f a
+  FreeApZOf' :: NontrivialApZ (Factor f) a -> Free f a
   deriving Functor
 
 instance (Functor f) => Applicative (Free f) where
   pure = FreeTrivial . TrivialPure
-  x <*> y = reviewAz (viewAz x <*> viewAz y)
+  x <*> y = reviewApZ (viewApZ x <*> viewApZ y)
 
 instance (Functor f) => Alternative (Free f) where
   empty = FreeTrivial TrivialZero
-  x <|> y = reviewSum (viewSum x <> viewSum y)
+  x <|> y = reviewSumZ (viewSumZ x <> viewSumZ y)
 
 instance FFunctor Free where
   ffmap = hoistFree
@@ -113,9 +113,9 @@ instance FMonad Free where
 -- * @pure a@
 -- * Nontrivial sum @x <|> y@
 newtype Summand f a = Summand {
-    runSummand :: Either (f a) (NontrivialAz (Factor f) a) }
-  deriving (Functor) via Lift1 (FCompose NontrivialAz Factor) f
-  deriving (FFunctor) via Lift1 (FCompose NontrivialAz Factor)
+    runSummand :: Either (f a) (NontrivialApZ (Factor f) a) }
+  deriving (Functor) via Lift1 (FCompose NontrivialApZ Factor) f
+  deriving (FFunctor) via Lift1 (FCompose NontrivialApZ Factor)
 
 -- | Subexpressions of @'Free' f a@ which can't be written as any one of
 --
@@ -123,62 +123,62 @@ newtype Summand f a = Summand {
 -- * @pure a@
 -- * Nontrivial product @x <*> y@
 newtype Factor f a = Factor {
-    runFactor :: Either (f a) (NontrivialSum (Summand f) a) }
-  deriving (Functor) via Lift1 (FCompose NontrivialSum Summand) f
-  deriving (FFunctor) via Lift1 (FCompose NontrivialSum Summand)
+    runFactor :: Either (f a) (NontrivialSumZ (Summand f) a) }
+  deriving (Functor) via Lift1 (FCompose NontrivialSumZ Summand) f
+  deriving (FFunctor) via Lift1 (FCompose NontrivialSumZ Summand)
 
-viewSum :: Free f a -> Sum (Summand f) a
-viewSum e = case e of
-  FreeTrivial tfa -> trivialSum $ hoistTrivial (Summand . Left) tfa
-  FreeSumOf' fas -> toSum fas
-  FreeAzOf' fas -> pure . Summand . Right $ fas
+viewSumZ :: Free f a -> SumZ (Summand f) a
+viewSumZ e = case e of
+  FreeTrivial tfa -> trivialSumZ $ hoistTrivial (Summand . Left) tfa
+  FreeSumZOf' fas -> toSumZ fas
+  FreeApZOf' fas -> pure . Summand . Right $ fas
 
-reviewSum :: Sum (Summand f) a -> Free f a
-reviewSum e = case nontrivialSum e of
+reviewSumZ :: SumZ (Summand f) a -> Free f a
+reviewSumZ e = case nontrivialSumZ e of
   Left tfa  -> trivialFree injectSummand tfa
-  Right fas    -> FreeSumOf' fas
+  Right fas    -> FreeSumZOf' fas
   where
     injectSummand :: Summand f a -> Free f a
-    injectSummand = either liftFree FreeAzOf' . runSummand
+    injectSummand = either liftFree FreeApZOf' . runSummand
 
 -- | View @Free f a@ as a sum of @Summand f@, terminated by
 --   either @Nil@ or @Zee a@ (corresponding @empty@ or @pure a@ respectively)
-pattern SumOf :: Sum (Summand f) a -> Free f a
-pattern SumOf sz <- (viewSum -> sz)
-  where SumOf sz = reviewSum sz
+pattern SumZOf :: SumZ (Summand f) a -> Free f a
+pattern SumZOf sz <- (viewSumZ -> sz)
+  where SumZOf sz = reviewSumZ sz
 
-{-# COMPLETE SumOf #-}
+{-# COMPLETE SumZOf #-}
 
-viewAz :: Free f a -> Az (Factor f) a
-viewAz e = case e of
-  FreeTrivial tfa -> trivialAz $ hoistTrivial (Factor . Left) tfa
-  FreeSumOf' fas -> liftAz . Factor . Right $ fas
-  FreeAzOf' fas -> toAz fas
+viewApZ :: Free f a -> ApZ (Factor f) a
+viewApZ e = case e of
+  FreeTrivial tfa -> trivialApZ $ hoistTrivial (Factor . Left) tfa
+  FreeSumZOf' fas -> liftApZ . Factor . Right $ fas
+  FreeApZOf' fas -> toApZ fas
 
-reviewAz :: Functor f => Az (Factor f) a -> Free f a
-reviewAz e = case nontrivialAz e of
+reviewApZ :: Functor f => ApZ (Factor f) a -> Free f a
+reviewApZ e = case nontrivialApZ e of
   Left tfa -> trivialFree injectFactor tfa
-  Right fas    -> FreeAzOf' fas
+  Right fas    -> FreeApZOf' fas
   where
     injectFactor :: Factor f a -> Free f a
-    injectFactor = either liftFree FreeSumOf' . runFactor
+    injectFactor = either liftFree FreeSumZOf' . runFactor
 
 -- | View @Free f a@ as a product of @Factor f@, terminated by
 --   either @'Zero'@ or @'Pure' a@ (corresponding @empty@ or @pure a@ respectively)
-pattern AzOf :: Functor f => () => Az (Factor f) a -> Free f a
-pattern AzOf az <- (viewAz -> az)
-  where AzOf az = reviewAz az
+pattern ApZOf :: Functor f => () => ApZ (Factor f) a -> Free f a
+pattern ApZOf az <- (viewApZ -> az)
+  where ApZOf az = reviewApZ az
 
-{-# COMPLETE AzOf #-}
+{-# COMPLETE ApZOf #-}
 
 -- | @Summand f a@ is either @f a@ or a product of multiple @Factor f@ values.
 --   The @Right@ case never returns a trivial summand, which is one of
 --
 -- * @'Zero'@,
 -- * @'Pure' a@,
--- * @'liftAz' fac@ for one @fac :: Factor f a@
-viewSummand :: Summand f a -> Either (f a) (Az (Factor f) a)
-viewSummand = fmap toAz . runSummand
+-- * @'liftApZ' fac@ for one @fac :: Factor f a@
+viewSummand :: Summand f a -> Either (f a) (ApZ (Factor f) a)
+viewSummand = fmap toApZ . runSummand
 
 -- | @Factor f a@ is either @f a@ or a sum of multiple @Summand f@ values.
 --   The @Right@ case never returns a trivial factor, which is one of
@@ -186,38 +186,38 @@ viewSummand = fmap toAz . runSummand
 -- * @'Nil'@,
 -- * @'Zee' a@,
 -- * @'Cons' suma Nil@ for one @suma :: Summand f a@
-viewFactor :: Factor f a -> Either (f a) (Sum (Summand f) a)
-viewFactor = fmap toSum . runFactor
+viewFactor :: Factor f a -> Either (f a) (SumZ (Summand f) a)
+viewFactor = fmap toSumZ . runFactor
 
 hoistFree :: (forall x. f x -> g x) -> Free f a -> Free g a
 hoistFree fg e = case e of
   FreeTrivial tfa -> FreeTrivial (hoistTrivial fg tfa)
-  FreeSumOf' fas -> FreeSumOf' (hoistNontrivialSum (hoistSummand fg) fas)
-  FreeAzOf' fas -> FreeAzOf' (hoistNontrivialAz (hoistFactor fg) fas)
+  FreeSumZOf' fas -> FreeSumZOf' (hoistNontrivialSumZ (hoistSummand fg) fas)
+  FreeApZOf' fas -> FreeApZOf' (hoistNontrivialApZ (hoistFactor fg) fas)
 
 hoistFactor :: (forall x. f x -> g x) -> Factor f a -> Factor g a
-hoistFactor fg = Factor . bimap fg (hoistNontrivialSum (hoistSummand fg)) . runFactor
+hoistFactor fg = Factor . bimap fg (hoistNontrivialSumZ (hoistSummand fg)) . runFactor
 
 hoistSummand :: (forall x. f x -> g x) -> Summand f a -> Summand g a
-hoistSummand fg = Summand . bimap fg (hoistNontrivialAz (hoistFactor fg)) . runSummand
+hoistSummand fg = Summand . bimap fg (hoistNontrivialApZ (hoistFactor fg)) . runSummand
 
 liftFree :: f a -> Free f a
 liftFree = FreeTrivial . TrivialLift
 
 foldFree :: forall f g a. (Alternative g) => (forall x. f x -> g x) -> Free f a -> g a
-foldFree handle = goSum . viewSum
+foldFree handle = goSumZ . viewSumZ
   where
-    goSum :: forall b. Sum (Summand f) b -> g b
-    goSum = foldrZ empty pure ((<|>) . goSummand)
+    goSumZ :: forall b. SumZ (Summand f) b -> g b
+    goSumZ = foldrZ empty pure ((<|>) . goSummand)
 
     goSummand :: forall b. Summand f b -> g b
-    goSummand = either handle goAz . viewSummand
+    goSummand = either handle goApZ . viewSummand
 
-    goAz :: forall b. Az (Factor f) b -> g b
-    goAz = foldAz goFactor empty
+    goApZ :: forall b. ApZ (Factor f) b -> g b
+    goApZ = foldApZ goFactor empty
 
     goFactor :: forall b. Factor f b -> g b
-    goFactor = either handle goSum . viewFactor
+    goFactor = either handle goSumZ . viewFactor
 
 ----
 
@@ -238,71 +238,71 @@ trivialFree k e = case e of
   TrivialLift fa -> k fa
 
 -- | Formal sum of @f a@ ending in either @pure a@ (@Zee a@) or @empty@ (Nil).
-type Sum f a = ListZ a (f a)
+type SumZ f a = ListZ a (f a)
 
--- | @Trivial f a + NontrivialSum f a ~ Sum f a = ListZ a (f a)@
-data NontrivialSum f a =
+-- | @Trivial f a + NontrivialSumZ f a ~ SumZ f a = ListZ a (f a)@
+data NontrivialSumZ f a =
     ConsZee (f a) a
   | ConsMany (f a) (f a) (ListZ a (f a))
 
-instance Functor f => Functor (NontrivialSum f) where
+instance Functor f => Functor (NontrivialSumZ f) where
   fmap h e = case e of
     ConsZee fa a -> ConsZee (fmap h fa) (h a)
     ConsMany fa fa' rest -> ConsMany (fmap h fa) (fmap h fa') (bimap h (fmap h) rest)
 
-instance FFunctor NontrivialSum where
-  ffmap = hoistNontrivialSum
+instance FFunctor NontrivialSumZ where
+  ffmap = hoistNontrivialSumZ
 
-hoistNontrivialSum :: (forall x. f x -> g x) -> NontrivialSum f a -> NontrivialSum g a
-hoistNontrivialSum fg e = case e of
+hoistNontrivialSumZ :: (forall x. f x -> g x) -> NontrivialSumZ f a -> NontrivialSumZ g a
+hoistNontrivialSumZ fg e = case e of
     ConsZee fa a -> ConsZee (fg fa) a
     ConsMany fa fa' rest -> ConsMany (fg fa) (fg fa') (fmap fg rest)
 
-trivialSum :: Trivial f a -> Sum f a
-trivialSum e = case e of
+trivialSumZ :: Trivial f a -> SumZ f a
+trivialSumZ e = case e of
   TrivialZero -> Nil
   TrivialPure a -> Zee a
   TrivialLift fa -> Cons fa Nil
 
-toSum :: NontrivialSum f a -> Sum f a
-toSum (ConsZee fa a) = Cons fa (Zee a)
-toSum (ConsMany fa fa' rest) = Cons fa (Cons fa' rest)
+toSumZ :: NontrivialSumZ f a -> SumZ f a
+toSumZ (ConsZee fa a) = Cons fa (Zee a)
+toSumZ (ConsMany fa fa' rest) = Cons fa (Cons fa' rest)
 
-nontrivialSum :: Sum f a -> Either (Trivial f a) (NontrivialSum f a)
-nontrivialSum e = case e of
+nontrivialSumZ :: SumZ f a -> Either (Trivial f a) (NontrivialSumZ f a)
+nontrivialSumZ e = case e of
   Nil -> Left TrivialZero
   Zee a -> Left $ TrivialPure a
   Cons fa Nil -> Left $ TrivialLift fa
   Cons fa (Zee a) -> Right $ ConsZee fa a
   Cons fa (Cons fa' rest) -> Right $ ConsMany fa fa' rest
 
--- | @Trivial f a + NontrivialAz f a ~ Az f a@
-data NontrivialAz f a where
-  ApZero :: f a -> NontrivialAz f b
-  ApMany :: f a -> f b -> Az f (b -> a -> c) -> NontrivialAz f c
+-- | @Trivial f a + NontrivialApZ f a ~ ApZ f a@
+data NontrivialApZ f a where
+  ApZero :: f a -> NontrivialApZ f b
+  ApMany :: f a -> f b -> ApZ f (b -> a -> c) -> NontrivialApZ f c
 
-deriving instance Functor (NontrivialAz f)
+deriving instance Functor (NontrivialApZ f)
 
-instance FFunctor NontrivialAz where
-  ffmap = hoistNontrivialAz
+instance FFunctor NontrivialApZ where
+  ffmap = hoistNontrivialApZ
 
-hoistNontrivialAz :: (forall x. f x -> g x) -> NontrivialAz f a -> NontrivialAz g a
-hoistNontrivialAz fg e = case e of
+hoistNontrivialApZ :: (forall x. f x -> g x) -> NontrivialApZ f a -> NontrivialApZ g a
+hoistNontrivialApZ fg e = case e of
   ApZero fa -> ApZero (fg fa)
-  ApMany fa fb rest -> ApMany (fg fa) (fg fb) (hoistAz fg rest)
+  ApMany fa fb rest -> ApMany (fg fa) (fg fb) (hoistApZ fg rest)
 
-trivialAz :: Trivial f a -> Az f a
-trivialAz e = case e of
+trivialApZ :: Trivial f a -> ApZ f a
+trivialApZ e = case e of
   TrivialZero -> Zero
   TrivialPure a -> Pure a
-  TrivialLift fa -> liftAz fa
+  TrivialLift fa -> liftApZ fa
 
-toAz :: NontrivialAz f a -> Az f a
-toAz (ApZero fa) = Ap fa Zero
-toAz (ApMany fa fb rest) = Ap fa (Ap fb rest)
+toApZ :: NontrivialApZ f a -> ApZ f a
+toApZ (ApZero fa) = Ap fa Zero
+toApZ (ApMany fa fb rest) = Ap fa (Ap fb rest)
 
-nontrivialAz :: Functor f => Az f a -> Either (Trivial f a) (NontrivialAz f a)
-nontrivialAz e = case e of
+nontrivialApZ :: Functor f => ApZ f a -> Either (Trivial f a) (NontrivialApZ f a)
+nontrivialApZ e = case e of
   Pure a -> Left $ TrivialPure a
   Zero -> Left TrivialZero
   Ap fa (Pure k) -> Left $ TrivialLift (k <$> fa)
